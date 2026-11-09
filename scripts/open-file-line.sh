@@ -3,7 +3,8 @@
 # tmux-open-file-line handler
 #
 # tmux の M-MouseDown1Pane (@open-file-line-key) から呼ばれ、クリック位置の
-# path:line をエディタの新規 window で開く
+# path:line をエディタの新規 window で開く。path:start-stop なら start 行へ
+# ジャンプした上で start〜stop を linewise visual で選択状態にする
 #   $1: #{mouse_word}  $2: #{pane_current_path}  $3: #{mouse_line} (フォールバック用)
 #   $4: #{pane_current_command} (エディタペイン内での誤爆ガード用)
 #
@@ -28,6 +29,7 @@ default_md_cmd=""
 EDITOR_CMD=${TMUX_OPEN_EDITOR:-$(get_option "@open-file-line-editor" vim)}
 MD_CMD=$(get_option "@open-file-line-markdown-cmd" "$default_md_cmd")
 DEBUG=$(get_option "@open-file-line-debug" off)
+RANGE_SELECT=$(get_option "@open-file-line-range-select" on)
 
 # 番兵文字 x を剥がす
 word=${1#x}
@@ -63,6 +65,19 @@ try_open() {
         l=1
         ;;
     esac
+    # path:start-stop -> start 行へ移動し、stop 行までを visual 選択
+    select_cmd=""
+    case $l in
+    [0-9]*-[0-9]*)
+        start=${l%%-*}
+        stop=${l#*-}
+        stop=${stop%%[!0-9]*}
+        l=$start
+        if [ "$RANGE_SELECT" = on ] && [ -n "$stop" ]; then
+            select_cmd="-c 'normal! ${start}GV${stop}G'"
+        fi
+        ;;
+    esac
     case $f in
     "~/"*) f=$HOME/${f#"~/"} ;;
     esac
@@ -76,7 +91,7 @@ try_open() {
         *.md) exec $MD_CMD -- "$f" ;;
         esac
     fi
-    exec tmux new-window -a -c "$dir" "$EDITOR_CMD +$l -- '$f'"
+    exec tmux new-window -a -c "$dir" "$EDITOR_CMD +$l $select_cmd -- '$f'"
 }
 
 # trim
